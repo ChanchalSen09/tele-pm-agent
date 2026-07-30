@@ -1,5 +1,11 @@
 # Telegram AI Assistant
 
+> **Kwartz AI Bot**  
+> Developed by **Chanchal Sen**  
+> **Live Bot Demo**: [https://t.me/agent_sen_09_bot](https://t.me/agent_sen_09_bot)
+
+---
+
 ## 1. Project Overview
 
 This repository contains an AI-powered Telegram bot built using Python, aiogram 3.x, and Google Gemini API. It was developed as a technical assessment to demonstrate Clean Architecture and Domain-Driven Design (DDD) principles in a real-time messaging application. The bot supports multi-turn conversation memory, prompt versioning, structured prompt injection defenses, and group chat mentions. All interaction history, user records, and AI execution telemetry are transactionally persisted to a PostgreSQL database using SQLAlchemy 2.0 and AsyncPG.
@@ -70,8 +76,8 @@ The codebase strictly separates concerns into four layers following the Dependen
 
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
-   cd Assessment
+   git clone https://github.com/ChanchalSen09/telegram-ai-assistant.git
+   cd telegram-ai-assistant
    ```
 
 2. **Create and activate virtual environment**:
@@ -230,7 +236,7 @@ black --check app tests
 
 ## 14. AI Usage
 
-AI development tools were used strictly as an productivity aid for code completion, boilerplate generation, and pytest fixture templates.
+AI development tools were used strictly as a productivity aid for code completion, boilerplate generation, and pytest fixture templates.
 
 - **System Architecture & Domain Design**: Architected manually following Clean Architecture / DDD patterns, establishing domain boundary interfaces (`ILLMProvider`, `IUnitOfWork`, repository contracts).
 - **Core Logic & Verification**: All business rules in `ConversationService`, prompt versioning in `PromptBuilder`, PostgreSQL transaction handling in `AsyncUnitOfWork`, and aiogram middlewares were implemented, code-reviewed, and verified through automated tests (`pytest`) and static type checks (`mypy`).
