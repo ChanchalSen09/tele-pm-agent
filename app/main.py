@@ -29,8 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application Lifespan Context Manager."""
     logger.info("Initializing Application Lifecycle...", env=settings.APP_ENV)
 
-    if settings.is_development and not settings.TELEGRAM_WEBHOOK_URL:
-        logger.info("Starting Telegram Bot in Long Polling mode for Development...")
+    if not settings.TELEGRAM_WEBHOOK_URL:
+        logger.info("Starting Telegram Bot in Long Polling mode...")
         await bot.delete_webhook(drop_pending_updates=False)
         task = asyncio.create_task(dp.start_polling(bot))
         _background_tasks.add(task)
@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("Shutting down Application Lifecycle...")
-    if settings.is_development and not settings.TELEGRAM_WEBHOOK_URL:
+    if not settings.TELEGRAM_WEBHOOK_URL:
         await dp.stop_polling()
     else:
         await bot.delete_webhook()
