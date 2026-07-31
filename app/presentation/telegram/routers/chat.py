@@ -101,8 +101,9 @@ async def handle_create_task(message: Message) -> None:
     title_words = []
 
     for w in words:
-        if w.startswith("@"):
-            assignee = w.lstrip("@")
+        clean_w = w.strip("[]")
+        if clean_w.startswith("@"):
+            assignee = clean_w.lstrip("@")
         else:
             title_words.append(w)
 
