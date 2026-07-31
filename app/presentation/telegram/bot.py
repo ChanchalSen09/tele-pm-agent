@@ -15,7 +15,6 @@ def create_bot() -> Bot:
     """Factory creating and configuring the Aiogram Bot instance."""
     return Bot(
         token=settings.TELEGRAM_BOT_TOKEN.get_secret_value(),
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
 
 
