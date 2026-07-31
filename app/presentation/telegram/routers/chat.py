@@ -24,6 +24,15 @@ _conversation_service = ConversationService(
 )
 
 
+async def send_safe_reply(message: Message, text: str) -> None:
+    """Safely replies to a message, falling back to plain text if Markdown parsing fails."""
+    try:
+        await message.reply(text=text, parse_mode="Markdown")
+    except Exception as exc:
+        logger.warning("Markdown parse error, falling back to plain text", error=str(exc))
+        await message.reply(text=text)
+
+
 @router.message(Command("tasks"))
 async def handle_tasks_list(message: Message) -> None:
     """Lists all active project tasks grouped by status."""
@@ -32,9 +41,9 @@ async def handle_tasks_list(message: Message) -> None:
         tasks = await uow.tasks.list_all_tasks()
 
     if not tasks:
-        await message.reply(
+        await send_safe_reply(
+            message,
             "📋 *Project Task Board*\n\nNo active tasks found. Use `/create_task <title> [@assignee]` to add a task!",
-            parse_mode="Markdown",
         )
         return
 
@@ -71,7 +80,7 @@ async def handle_tasks_list(message: Message) -> None:
             assignee = f" (@{t.assignee_username})" if t.assignee_username else ""
             lines.append(f"• `{str(t.id)[:8]}`: {t.title}{assignee}")
 
-    await message.reply(text="\n".join(lines), parse_mode="Markdown")
+    await send_safe_reply(message, "\n".join(lines))
 
 
 @router.message(Command("create_task"))
@@ -80,9 +89,9 @@ async def handle_create_task(message: Message) -> None:
     text = message.text or ""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply(
+        await send_safe_reply(
+            message,
             "⚠️ Usage: `/create_task <task title> [@assignee]`\nExample: `/create_task Fix login API @alex`",
-            parse_mode="Markdown",
         )
         return
 
@@ -118,7 +127,7 @@ async def handle_create_task(message: Message) -> None:
         f"👤 *Assigned*: {assignee_str or 'Unassigned'}\n"
         f"🚦 *Status*: `TODO`"
     )
-    await message.reply(text=reply_text, parse_mode="Markdown")
+    await send_safe_reply(message, reply_text)
 
 
 @router.message(Command("status"))
@@ -130,7 +139,7 @@ async def handle_project_status(message: Message) -> None:
 
     total = len(tasks)
     if total == 0:
-        await message.reply("📊 *Project Status*: No tasks created yet.", parse_mode="Markdown")
+        await send_safe_reply(message, "📊 *Project Status*: No tasks created yet.")
         return
 
     done_count = sum(1 for t in tasks if t.status == "DONE")
@@ -149,7 +158,7 @@ async def handle_project_status(message: Message) -> None:
         f"• 🔴 Blocked: `{block_count}`\n\n"
         f"Use `/pull_updates` to ask assigned members for status!"
     )
-    await message.reply(text=summary_text, parse_mode="Markdown")
+    await send_safe_reply(message, summary_text)
 
 
 @router.message(Command("pull_updates"))
@@ -161,7 +170,7 @@ async def handle_pull_updates(message: Message) -> None:
 
     open_tasks = [t for t in tasks if t.status in ("TODO", "IN_PROGRESS", "BLOCKED")]
     if not open_tasks:
-        await message.reply("🎉 All tasks are completed! No open status updates required.", parse_mode="Markdown")
+        await send_safe_reply(message, "🎉 All tasks are completed! No open status updates required.")
         return
 
     lines = ["📣 *Project Manager Status Check-In*\n"]
@@ -179,7 +188,7 @@ async def handle_pull_updates(message: Message) -> None:
     else:
         lines.append("\nTeam, please assign or update progress on the unassigned open tasks.")
 
-    await message.reply(text="\n".join(lines), parse_mode="Markdown")
+    await send_safe_reply(message, "\n".join(lines))
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -248,4 +257,4 @@ async def handle_chat_message(
         user_info=user_info,
     )
 
-    await message.reply(text=response_dto.response_text, parse_mode="Markdown")
+    await send_safe_reply(message, response_dto.response_text)
