@@ -38,7 +38,7 @@ async def test_help_command_handler() -> None:
 
     message.answer.assert_called_once()
     _, kwargs = message.answer.call_args
-    assert "Agentic Project Manager Capabilities" in kwargs["text"]
+    assert "Commands Directory" in kwargs["text"]
 
 
 @pytest.mark.asyncio
