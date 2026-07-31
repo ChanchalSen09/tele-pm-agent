@@ -30,7 +30,7 @@ async def send_safe_reply(message: Message, text: str) -> None:
         await message.reply(text=text, parse_mode="Markdown")
     except Exception as exc:
         logger.warning("Markdown parse error, falling back to plain text", error=str(exc))
-        await message.reply(text=text)
+        await message.reply(text=text, parse_mode=None)
 
 
 @router.message(Command("tasks"))
