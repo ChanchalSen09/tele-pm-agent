@@ -131,3 +131,22 @@ class AuditLogModel(Base):
     details: Mapped[dict[str, Any]] = mapped_column(
         JSONType, nullable=False, default=dict
     )
+
+
+class TaskModel(Base):
+    """ORM Model representing project tasks (`tasks` table)."""
+
+    __tablename__ = "tasks"
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assignee_username: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(50), default="TODO", nullable=False, index=True
+    )  # 'TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE'
+    created_by_telegram_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+

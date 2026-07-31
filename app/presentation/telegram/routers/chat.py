@@ -1,12 +1,15 @@
-"""Telegram Chat Router handling text queries in private and group chats via ConversationService."""
+# ruff: noqa: PLR2004
+"""Telegram Chat Router handling text queries and Project Manager task management."""
 
 import structlog
 from aiogram import F, Router
 from aiogram.enums import ChatAction, ChatType
+from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.application.dtos.conversation import UserMessageInputDTO
 from app.application.services.conversation_service import ConversationService
+from app.infrastructure.database.models.models import TaskModel
 from app.infrastructure.database.repositories import AsyncUnitOfWork
 from app.infrastructure.database.session import AsyncSessionFactory
 from app.infrastructure.llm.gemini_client import get_gemini_client
@@ -21,17 +24,171 @@ _conversation_service = ConversationService(
 )
 
 
+@router.message(Command("tasks"))
+async def handle_tasks_list(message: Message) -> None:
+    """Lists all active project tasks grouped by status."""
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        assert uow.tasks is not None
+        tasks = await uow.tasks.list_all_tasks()
+
+    if not tasks:
+        await message.reply(
+            "📋 *Project Task Board*\n\nNo active tasks found. Use `/create_task <title> [@assignee]` to add a task!",
+            parse_mode="Markdown",
+        )
+        return
+
+    todo_tasks = [t for t in tasks if t.status == "TODO"]
+    in_progress = [t for t in tasks if t.status == "IN_PROGRESS"]
+    blocked = [t for t in tasks if t.status == "BLOCKED"]
+    done = [t for t in tasks if t.status == "DONE"]
+
+    lines = ["📋 *Project Task Board*\n"]
+    if in_progress:
+        lines.append("🟡 *IN PROGRESS*:")
+        for t in in_progress:
+            assignee = f" (@{t.assignee_username})" if t.assignee_username else ""
+            lines.append(f"• `{str(t.id)[:8]}`: {t.title}{assignee}")
+        lines.append("")
+
+    if todo_tasks:
+        lines.append("⚪ *TO DO*:")
+        for t in todo_tasks:
+            assignee = f" (@{t.assignee_username})" if t.assignee_username else ""
+            lines.append(f"• `{str(t.id)[:8]}`: {t.title}{assignee}")
+        lines.append("")
+
+    if blocked:
+        lines.append("🔴 *BLOCKED*:")
+        for t in blocked:
+            assignee = f" (@{t.assignee_username})" if t.assignee_username else ""
+            lines.append(f"• `{str(t.id)[:8]}`: {t.title}{assignee}")
+        lines.append("")
+
+    if done:
+        lines.append("🟢 *DONE*:")
+        for t in done:
+            assignee = f" (@{t.assignee_username})" if t.assignee_username else ""
+            lines.append(f"• `{str(t.id)[:8]}`: {t.title}{assignee}")
+
+    await message.reply(text="\n".join(lines), parse_mode="Markdown")
+
+
+@router.message(Command("create_task"))
+async def handle_create_task(message: Message) -> None:
+    """Creates a new task for the project."""
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(
+            "⚠️ Usage: `/create_task <task title> [@assignee]`\nExample: `/create_task Fix login API @alex`",
+            parse_mode="Markdown",
+        )
+        return
+
+    payload = parts[1].strip()
+    words = payload.split()
+    assignee = None
+    title_words = []
+
+    for w in words:
+        if w.startswith("@"):
+            assignee = w.lstrip("@")
+        else:
+            title_words.append(w)
+
+    title = " ".join(title_words) or "New Task"
+    creator_id = message.from_user.id if message.from_user else 0
+
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        assert uow.tasks is not None
+        task = TaskModel(
+            title=title,
+            assignee_username=assignee,
+            status="TODO",
+            created_by_telegram_id=creator_id,
+        )
+        saved_task = await uow.tasks.save(task)
+
+    assignee_str = f" to @{assignee}" if assignee else ""
+    reply_text = (
+        f"✅ *Task Created Successfully!*\n\n"
+        f"📌 *ID*: `{str(saved_task.id)[:8]}`\n"
+        f"📝 *Title*: {saved_task.title}\n"
+        f"👤 *Assigned*: {assignee_str or 'Unassigned'}\n"
+        f"🚦 *Status*: `TODO`"
+    )
+    await message.reply(text=reply_text, parse_mode="Markdown")
+
+
+@router.message(Command("status"))
+async def handle_project_status(message: Message) -> None:
+    """Generates project status summary report."""
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        assert uow.tasks is not None
+        tasks = await uow.tasks.list_all_tasks()
+
+    total = len(tasks)
+    if total == 0:
+        await message.reply("📊 *Project Status*: No tasks created yet.", parse_mode="Markdown")
+        return
+
+    done_count = sum(1 for t in tasks if t.status == "DONE")
+    prog_count = sum(1 for t in tasks if t.status == "IN_PROGRESS")
+    todo_count = sum(1 for t in tasks if t.status == "TODO")
+    block_count = sum(1 for t in tasks if t.status == "BLOCKED")
+    completion_pct = int((done_count / total) * 100)
+
+    summary_text = (
+        f"📊 *Project Status Summary*\n\n"
+        f"📈 *Sprint Completion*: {completion_pct}%\n"
+        f"• Total Tasks: `{total}`\n"
+        f"• 🟢 Done: `{done_count}`\n"
+        f"• 🟡 In Progress: `{prog_count}`\n"
+        f"• ⚪ To Do: `{todo_count}`\n"
+        f"• 🔴 Blocked: `{block_count}`\n\n"
+        f"Use `/pull_updates` to ask assigned members for status!"
+    )
+    await message.reply(text=summary_text, parse_mode="Markdown")
+
+
+@router.message(Command("pull_updates"))
+async def handle_pull_updates(message: Message) -> None:
+    """Actively pulls status updates from assigned team members."""
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        assert uow.tasks is not None
+        tasks = await uow.tasks.list_all_tasks()
+
+    open_tasks = [t for t in tasks if t.status in ("TODO", "IN_PROGRESS", "BLOCKED")]
+    if not open_tasks:
+        await message.reply("🎉 All tasks are completed! No open status updates required.", parse_mode="Markdown")
+        return
+
+    lines = ["📣 *Project Manager Status Check-In*\n"]
+    tagged_members = set()
+
+    for t in open_tasks:
+        if t.assignee_username:
+            tagged_members.add(f"@{t.assignee_username}")
+            lines.append(f"• @{t.assignee_username}: Please reply with status for *{t.title}* (`{str(t.id)[:8]}`)")
+        else:
+            lines.append(f"• Unassigned: *{t.title}* (`{str(t.id)[:8]}`)")
+
+    if tagged_members:
+        lines.append(f"\nHey {' '.join(tagged_members)} — please provide a brief update on your tasks!")
+    else:
+        lines.append("\nTeam, please assign or update progress on the unassigned open tasks.")
+
+    await message.reply(text="\n".join(lines), parse_mode="Markdown")
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_chat_message(
     message: Message,
     conversation_service: ConversationService | None = None,
     correlation_id: str = "N/A",
 ) -> None:
-    """Handles incoming plain text query updates from Telegram (Private & Group chats).
-
-    Validates group mentions, triggers typing indicator, dispatches query to
-    ConversationService, and returns generated Markdown response.
-    """
+    """Handles incoming plain text query updates from Telegram (Private & Group chats)."""
     if not message.text or not message.from_user:
         return
 
@@ -47,7 +204,6 @@ async def handle_chat_message(
             username_tag = f"@{bot_username.lower()}"
             if username_tag in message.text.lower():
                 is_mentioned = True
-                # Clean @mention tag from user prompt
                 clean_words = [
                     w
                     for w in message.text.split()
@@ -62,7 +218,6 @@ async def handle_chat_message(
             and message.reply_to_message.from_user.id == bot_info.id
         )
 
-        # Ignore messages in groups that do NOT mention or reply to the bot
         if not (is_mentioned or is_reply_to_bot):
             return
 
@@ -82,7 +237,6 @@ async def handle_chat_message(
         correlation_id=correlation_id,
     )
 
-    # Trigger typing visual indicator on Telegram UI
     if message.bot:
         await message.bot.send_chat_action(
             chat_id=message.chat.id, action=ChatAction.TYPING
