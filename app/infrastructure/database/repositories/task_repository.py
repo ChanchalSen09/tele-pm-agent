@@ -61,14 +61,25 @@ class TaskRepository(SQLAlchemyBaseRepository[TaskModel], ITaskRepository):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def update_status(self, task_id: str, new_status: str) -> TaskModel | None:
-        """Updates task status by task UUID."""
-        try:
-            uuid_obj = UUID(task_id)
-        except ValueError:
-            return None
+    async def get_by_id_prefix(self, prefix: str) -> TaskModel | None:
+        """Retrieves task matching short UUID prefix (e.g. 8-char hex)."""
+        clean_prefix = prefix.strip().lower()
+        tasks = await self.list_all_tasks()
+        for t in tasks:
+            if str(t.id).lower().startswith(clean_prefix):
+                return t
+        return None
 
-        task = await self.get_by_id(uuid_obj)
+    async def update_status(self, task_id: str, new_status: str) -> TaskModel | None:
+        """Updates task status by task UUID or short prefix."""
+        task = await self.get_by_id_prefix(task_id)
+        if not task:
+            try:
+                uuid_obj = UUID(task_id)
+                task = await self.get_by_id(uuid_obj)
+            except ValueError:
+                return None
+
         if task:
             task.status = new_status.upper()
             await self.session.flush()

@@ -195,6 +195,80 @@ async def handle_pull_updates(message: Message) -> None:
     await send_safe_reply(message, "\n".join(lines))
 
 
+@router.message(Command("update_task"))
+async def handle_update_task(message: Message) -> None:
+    """Updates status of a task by ID prefix (e.g. /update_task 5d02ccee IN_PROGRESS)."""
+    text = message.text or ""
+    parts = text.split()
+    if len(parts) < 3:
+        await send_safe_reply(
+            message,
+            "⚠️ Usage: `/update_task <task_id> <STATUS>`\nAllowed Statuses: `TODO`, `IN_PROGRESS`, `BLOCKED`, `DONE`\nExample: `/update_task 5d02ccee IN_PROGRESS`",
+        )
+        return
+
+    task_id = parts[1].strip()
+    status_input = parts[2].strip().upper()
+    valid_statuses = {"TODO", "IN_PROGRESS", "BLOCKED", "DONE"}
+
+    if status_input not in valid_statuses:
+        await send_safe_reply(
+            message,
+            f"⚠️ Invalid status `{status_input}`. Choose from: `TODO`, `IN_PROGRESS`, `BLOCKED`, `DONE`",
+        )
+        return
+
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        assert uow.tasks is not None
+        task = await uow.tasks.update_status(task_id, status_input)
+
+    if not task:
+        await send_safe_reply(message, f"❌ Task with ID prefix `{task_id}` not found.")
+        return
+
+    await send_safe_reply(
+        message,
+        f"🔄 *Task Status Updated!*\n\n"
+        f"📌 *ID*: `{str(task.id)[:8]}`\n"
+        f"📝 *Title*: {task.title}\n"
+        f"👤 *Assigned*: @{task.assignee_username or 'Unassigned'}\n"
+        f"🚦 *New Status*: `{task.status}`",
+    )
+
+
+@router.message(Command("close_task"))
+@router.message(Command("task_done"))
+async def handle_close_task(message: Message) -> None:
+    """Closes/completes a task by ID prefix (e.g. /close_task 5d02ccee)."""
+    text = message.text or ""
+    parts = text.split()
+    if len(parts) < 2:
+        await send_safe_reply(
+            message,
+            "⚠️ Usage: `/close_task <task_id>`\nExample: `/close_task 5d02ccee`",
+        )
+        return
+
+    task_id = parts[1].strip()
+
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        assert uow.tasks is not None
+        task = await uow.tasks.update_status(task_id, "DONE")
+
+    if not task:
+        await send_safe_reply(message, f"❌ Task with ID prefix `{task_id}` not found.")
+        return
+
+    await send_safe_reply(
+        message,
+        f"🎉 *Task Closed Successfully!*\n\n"
+        f"📌 *ID*: `{str(task.id)[:8]}`\n"
+        f"📝 *Title*: {task.title}\n"
+        f"👤 *Assigned*: @{task.assignee_username or 'Unassigned'}\n"
+        f"🚦 *Status*: `DONE` 🟢",
+    )
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_chat_message(
     message: Message,
