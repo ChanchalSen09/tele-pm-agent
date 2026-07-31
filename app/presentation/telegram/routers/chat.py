@@ -30,7 +30,7 @@ async def send_safe_reply(message: Message, text: str) -> None:
         await message.reply(text=text, parse_mode="Markdown")
     except Exception as exc:
         logger.warning("Markdown parse error, falling back to plain text", error=str(exc))
-        await message.reply(text=text, parse_mode=None)
+        await message.reply(text=text)
 
 
 @router.message(Command("tasks"))
@@ -101,9 +101,8 @@ async def handle_create_task(message: Message) -> None:
     title_words = []
 
     for w in words:
-        clean_w = w.strip("[]")
-        if clean_w.startswith("@"):
-            assignee = clean_w.lstrip("@")
+        if w.startswith("@"):
+            assignee = w.lstrip("@")
         else:
             title_words.append(w)
 

@@ -116,13 +116,25 @@ class ConversationService:
                 for msg in recent_db_messages
             ]
 
-            # 4. Prompt Builder: Construct System Persona & Token Optimized Payload
+            # 4. Fetch Active Project Tasks for Context Awareness
+            task_summary = "No active tasks in database."
+            if uow.tasks:
+                tasks = await uow.tasks.list_all_tasks()
+                if tasks:
+                    task_lines = [
+                        f"- Task '{t.title}' (ID: {str(t.id)[:8]}, Status: {t.status}, Assignee: @{t.assignee_username or 'Unassigned'})"
+                        for t in tasks
+                    ]
+                    task_summary = "\n".join(task_lines)
+
+            # 5. Prompt Builder: Construct System Persona & Token Optimized Payload
             payload = self.prompt_builder.build_prompt_payload(
                 user_text=sanitized_text,
                 history=history_messages,
                 variables={
                     "user_name": user.first_name,
                     "tier": user.tier,
+                    "project_tasks": task_summary,
                 },
             )
 
@@ -201,6 +213,7 @@ class ConversationService:
         payload = self.prompt_builder.build_prompt_payload(
             user_text=sanitized_text,
             history=history,
+            variables={"project_tasks": "No active database tasks."},
         )
 
         llm_response = await self.llm_provider.generate_completion(
