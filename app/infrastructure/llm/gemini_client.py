@@ -11,7 +11,11 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
-from app.core.exceptions import LLMException, ValidationException
+from app.core.exceptions import (
+    LLMException,
+    RateLimitExceededException,
+    ValidationException,
+)
 from app.domain.interfaces.llm import ILLMProvider, LLMMessage, LLMResponse
 
 logger = structlog.get_logger(__name__)
@@ -146,15 +150,28 @@ class GeminiClientAdapter(ILLMProvider):
                 )
                 last_exception = LLMException("Gemini API request execution timed out.")
             except Exception as e:
-                logger.warning(
-                    "Gemini API execution attempt failed", attempt=attempt, error=str(e)
+                err_str = str(e)
+                is_rate_limit = (
+                    "429" in err_str
+                    or "RESOURCE_EXHAUSTED" in err_str
+                    or "quota" in err_str.lower()
                 )
-                last_exception = LLMException(f"Gemini API failure: {e!s}")
+                logger.warning(
+                    "Gemini API execution attempt failed",
+                    attempt=attempt,
+                    is_rate_limit=is_rate_limit,
+                    error=err_str,
+                )
+                if is_rate_limit:
+                    last_exception = RateLimitExceededException(retry_after=15 * attempt)
+                else:
+                    last_exception = LLMException(f"Gemini API failure: {err_str}")
 
-            if attempt < self.max_retries:
-                jitter = random.uniform(0.8, 1.2)
-                backoff_delay = ((2 ** (attempt - 1)) * 1.0) * jitter
-                await asyncio.sleep(backoff_delay)
+                if attempt < self.max_retries:
+                    base_delay = 5.0 if is_rate_limit else 1.0
+                    jitter = random.uniform(0.8, 1.2)
+                    backoff_delay = ((2 ** (attempt - 1)) * base_delay) * jitter
+                    await asyncio.sleep(backoff_delay)
 
         raise last_exception or LLMException(
             "Gemini completion failed after max retries."
