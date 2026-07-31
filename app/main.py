@@ -11,6 +11,8 @@ from fastapi import FastAPI, Request, Response, status
 
 from app.core.config import settings
 from app.core.logger_setup import setup_logging
+from app.infrastructure.database.base import Base
+from app.infrastructure.database.session import engine
 from app.presentation.telegram.bot import create_bot_and_dispatcher
 
 # Configure structured logging on boot
@@ -28,6 +30,14 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application Lifespan Context Manager."""
     logger.info("Initializing Application Lifecycle...", env=settings.APP_ENV)
+
+    # Auto-synchronize PostgreSQL tables on boot
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables auto-synchronized.")
+    except Exception as exc:
+        logger.error("Failed to auto-sync database tables on startup", error=str(exc))
 
     if not settings.TELEGRAM_WEBHOOK_URL:
         logger.info("Starting Telegram Bot in Long Polling mode...")
