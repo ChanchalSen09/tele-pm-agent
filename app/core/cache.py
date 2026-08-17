@@ -1,7 +1,6 @@
 """Task Board Caching Engine for High-Efficiency Response Serving."""
 
 from dataclasses import dataclass
-from typing import Any
 
 import structlog
 

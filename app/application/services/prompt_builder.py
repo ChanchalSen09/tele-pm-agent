@@ -55,6 +55,7 @@ class PromptBuilder:
             "current_time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "tier": "standard",
             "project_tasks": "No active database tasks.",
+            "group_members": "No members registered yet.",
         }
         if variables:
             var_map.update(variables)

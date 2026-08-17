@@ -8,11 +8,13 @@ from typing import Any
 import structlog
 from aiogram.types import Update
 from fastapi import FastAPI, Request, Response, status
+from sqlalchemy import text
 
+from app.application.services.reminder_service import check_and_send_due_task_reminders
 from app.core.config import settings
 from app.core.logger_setup import setup_logging
 from app.infrastructure.database.base import Base
-from app.infrastructure.database.session import engine
+from app.infrastructure.database.session import AsyncSessionFactory, engine
 from app.presentation.telegram.bot import create_bot_and_dispatcher
 
 # Configure structured logging on boot
@@ -35,7 +37,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            from sqlalchemy import text
 
             await conn.execute(
                 text(
@@ -57,9 +58,34 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     "CREATE INDEX IF NOT EXISTS ix_tasks_telegram_chat_id ON tasks (telegram_chat_id);"
                 )
             )
+            await conn.execute(
+                text(
+                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMP WITH TIME ZONE;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'HIGH';"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'MEMBER';"
+                )
+            )
         logger.info("Database tables and schema auto-synchronized successfully.")
     except Exception as exc:
         logger.error("Failed to auto-sync database tables on startup", error=str(exc))
+
+    # Launch periodic background due-date reminder task
+    async def _reminder_loop() -> None:
+        while True:
+            await asyncio.sleep(1800)  # Check every 30 minutes
+            await check_and_send_due_task_reminders(bot, AsyncSessionFactory)
+
+    reminder_task = asyncio.create_task(_reminder_loop())
+    _background_tasks.add(reminder_task)
+    reminder_task.add_done_callback(_background_tasks.discard)
 
     if not settings.TELEGRAM_WEBHOOK_URL:
         logger.info("Starting Telegram Bot in Long Polling mode...")
@@ -100,7 +126,6 @@ async def health_check() -> dict[str, Any]:
     db_healthy = True
     try:
         async with engine.connect() as conn:
-            from sqlalchemy import text
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
         logger.warning("Health probe database ping failed", error=str(exc))

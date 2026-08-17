@@ -1,6 +1,9 @@
 # ruff: noqa: PLR2004
 """Telegram Chat Router handling text queries and Project Manager task management."""
 
+import html
+import re
+
 import structlog
 from aiogram import F, Router
 from aiogram.enums import ChatAction, ChatType
@@ -24,17 +27,75 @@ _conversation_service = ConversationService(
 )
 
 
+def markdown_to_telegram_html(text: str) -> str:
+    """Converts standard Markdown text into Telegram-compliant HTML tags."""
+    if not text:
+        return ""
+
+    code_blocks: list[str] = []
+    inline_codes: list[str] = []
+
+    def save_code_block(match: re.Match[str]) -> str:
+        code_content = match.group(1) or ""
+        escaped_code = html.escape(code_content.strip("\n"))
+        code_blocks.append(f"<pre><code>{escaped_code}</code></pre>")
+        return f"\x00CB{len(code_blocks) - 1}\x00"
+
+    def save_inline_code(match: re.Match[str]) -> str:
+        code_content = match.group(1)
+        escaped_code = html.escape(code_content)
+        inline_codes.append(f"<code>{escaped_code}</code>")
+        return f"\x00IC{len(inline_codes) - 1}\x00"
+
+    # Extract code blocks
+    processed = re.sub(r"```(?:\w+)?\n?(.*?)```", save_code_block, text, flags=re.DOTALL)
+    # Extract inline code
+    processed = re.sub(r"`([^`]+)`", save_inline_code, processed)
+
+    # HTML escape remaining prose text
+    processed = html.escape(processed)
+
+    # Convert Headers (# Header -> <b>Header</b>)
+    processed = re.sub(r"^#{1,6}\s+(.+)$", r"<b>\1</b>", processed, flags=re.MULTILINE)
+
+    # Convert Bold (**text** -> <b>text</b>)
+    processed = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", processed)
+
+    # Convert Italic (*text* -> <i>text</i>)
+    processed = re.sub(r"(?<!\w)\*(.*?)\*(?!\w)", r"<i>\1</i>", processed)
+
+    # Restore code blocks & inline code
+    for i, cb in enumerate(code_blocks):
+        processed = processed.replace(f"\x00CB{i}\x00", cb)
+    for i, ic in enumerate(inline_codes):
+        processed = processed.replace(f"\x00IC{i}\x00", ic)
+
+    return processed
+
+
 async def send_safe_reply(message: Message, text: str) -> None:
-    """Safely replies to a message, falling back to plain text if Markdown parsing fails."""
+    """Safely replies to a message using Telegram HTML, falling back to Markdown and plain text."""
+    # Attempt 1: Telegram HTML format
+    try:
+        html_text = markdown_to_telegram_html(text)
+        await message.reply(text=html_text, parse_mode="HTML")
+        return
+    except Exception as exc:
+        logger.debug("HTML reply failed, trying legacy Markdown", error=str(exc))
+
+    # Attempt 2: Legacy Markdown format
     try:
         await message.reply(text=text, parse_mode="Markdown")
+        return
     except Exception as exc:
         logger.warning("Markdown parse error, falling back to plain text", error=str(exc))
-        try:
-            await message.reply(text=text)
-        except Exception:
-            if message.bot:
-                await message.bot.send_message(chat_id=message.chat.id, text=text)
+
+    # Attempt 3: Plain text fallback
+    try:
+        await message.reply(text=text)
+    except Exception:
+        if message.bot:
+            await message.bot.send_message(chat_id=message.chat.id, text=text)
 
 
 @router.message(Command("tasks"))

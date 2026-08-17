@@ -57,7 +57,7 @@ async def test_natural_task_status_update(db_session: AsyncSession) -> None:
         )
         assert update_res is not None
         assert update_res.action_type == "UPDATE_TASK"
-        assert "Updated Task Status" in update_res.response_text
+        assert "Updated **Fix ui overflow** status to `DONE`" in update_res.response_text
 
         # Verify status in DB
         tasks_updated = await uow.tasks.list_all_tasks(chat_id=-1001)

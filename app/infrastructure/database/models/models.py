@@ -3,7 +3,16 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +36,7 @@ class UserModel(Base):
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     tier: Mapped[str] = mapped_column(String(50), default="standard", nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="MEMBER", nullable=False)
 
     # Relationships
     conversations: Mapped[list["ConversationModel"]] = relationship(
@@ -149,6 +159,12 @@ class TaskModel(Base):
     status: Mapped[str] = mapped_column(
         String(50), default="TODO", nullable=False, index=True
     )  # 'TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE'
+    priority: Mapped[str] = mapped_column(
+        String(50), default="HIGH", nullable=False
+    )  # 'LOW', 'MEDIUM', 'HIGH'
+    due_date: Mapped[Any | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_by_telegram_id: Mapped[int] = mapped_column(
         BigInteger, nullable=False, index=True
     )

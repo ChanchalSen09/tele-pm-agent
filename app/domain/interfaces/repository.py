@@ -34,6 +34,11 @@ class IUserRepository(IBaseRepository[Any]):
         """Fetch user by Telegram ID."""
         pass
 
+    @abstractmethod
+    async def list_by_chat_id(self, chat_id: int | None) -> list[Any]:
+        """Fetch users participating in a specific chat."""
+        pass
+
 
 class IConversationRepository(IBaseRepository[Any]):
     """Conversation Thread Repository Interface."""
