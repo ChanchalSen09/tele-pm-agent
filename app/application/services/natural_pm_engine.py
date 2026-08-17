@@ -28,7 +28,7 @@ class NaturalPMResult:
     action_type: str
 
 
-async def parse_and_execute_natural_intent(
+async def parse_and_execute_natural_intent(  # noqa: PLR0911, PLR0912, PLR0915
     user_text: str,
     chat_id: int | None,
     creator_id: int,

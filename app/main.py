@@ -8,11 +8,13 @@ from typing import Any
 import structlog
 from aiogram.types import Update
 from fastapi import FastAPI, Request, Response, status
+from sqlalchemy import text
 
+from app.application.services.reminder_service import check_and_send_due_task_reminders
 from app.core.config import settings
 from app.core.logger_setup import setup_logging
 from app.infrastructure.database.base import Base
-from app.infrastructure.database.session import engine
+from app.infrastructure.database.session import AsyncSessionFactory, engine
 from app.presentation.telegram.bot import create_bot_and_dispatcher
 
 # Configure structured logging on boot
@@ -35,7 +37,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            from sqlalchemy import text
 
             await conn.execute(
                 text(
@@ -45,6 +46,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_conversations_telegram_chat_id ON conversations (telegram_chat_id);"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_tasks_telegram_chat_id ON tasks (telegram_chat_id);"
                 )
             )
             await conn.execute(
@@ -68,11 +79,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Launch periodic background due-date reminder task
     async def _reminder_loop() -> None:
-        from app.application.services.reminder_service import (
-            check_and_send_due_task_reminders,
-        )
-        from app.infrastructure.database.session import AsyncSessionFactory
-
         while True:
             await asyncio.sleep(1800)  # Check every 30 minutes
             await check_and_send_due_task_reminders(bot, AsyncSessionFactory)
@@ -120,7 +126,6 @@ async def health_check() -> dict[str, Any]:
     db_healthy = True
     try:
         async with engine.connect() as conn:
-            from sqlalchemy import text
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
         logger.warning("Health probe database ping failed", error=str(exc))
