@@ -97,3 +97,24 @@ async def test_clear_user_context(mock_llm_provider: ILLMProvider) -> None:
 
     service.clear_user_context("user_123")
     assert service.get_user_context_length("user_123") == 0
+
+
+@pytest.mark.asyncio
+async def test_process_user_message_guardrail_refusal(
+    mock_llm_provider: ILLMProvider,
+) -> None:
+    """Verifies out-of-scope query triggers immediate guardrail refusal without invoking LLM."""
+    service = ConversationService(llm_provider=mock_llm_provider)
+    input_dto = UserMessageInputDTO(
+        user_id="user_123",
+        user_text="write a cpp boilderlat code",
+        correlation_id="corr_999",
+    )
+
+    response = await service.process_user_message(input_dto)
+
+    assert response.finish_reason == "GUARDRAIL_REFUSAL"
+    assert response.model_name == "guardrail_filter"
+    assert "I am Kwartz, your AI Product Manager" in response.response_text
+    assert "I cannot assist with general programming" in response.response_text
+

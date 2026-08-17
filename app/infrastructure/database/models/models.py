@@ -42,6 +42,9 @@ class ConversationModel(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUIDType, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    telegram_chat_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
     title: Mapped[str | None] = mapped_column(
         String(255), nullable=True, default="New Conversation"
     )
@@ -149,4 +152,29 @@ class TaskModel(Base):
     created_by_telegram_id: Mapped[int] = mapped_column(
         BigInteger, nullable=False, index=True
     )
+    telegram_chat_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
+
+
+class OrganizationModel(Base):
+    """ORM Model representing organization tenant accounts (`organizations` table)."""
+
+    __tablename__ = "organizations"
+
+    telegram_chat_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, index=True, nullable=False
+    )
+    org_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    plan_tier: Mapped[str] = mapped_column(
+        String(50), default="standard", nullable=False
+    )  # 'standard', 'pro', 'enterprise'
+    monthly_token_limit: Mapped[int] = mapped_column(
+        Integer, default=100000, nullable=False
+    )
+    tokens_consumed_this_month: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
 

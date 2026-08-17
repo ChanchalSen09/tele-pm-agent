@@ -39,15 +39,16 @@ async def send_safe_reply(message: Message, text: str) -> None:
 
 @router.message(Command("tasks"))
 async def handle_tasks_list(message: Message) -> None:
-    """Lists all active project tasks grouped by status."""
+    """Lists all active project tasks grouped by status for the current chat/group."""
+    chat_id = message.chat.id
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
         assert uow.tasks is not None
-        tasks = await uow.tasks.list_all_tasks()
+        tasks = await uow.tasks.list_all_tasks(chat_id=chat_id)
 
     if not tasks:
         await send_safe_reply(
             message,
-            "📋 *Project Task Board*\n\nNo active tasks found. Use `/create_task <title> [@assignee]` to add a task!",
+            "📋 *Project Task Board*\n\nNo active tasks found for this group. Use `/create_task <title> [@assignee]` to add a task!",
         )
         return
 
@@ -89,7 +90,7 @@ async def handle_tasks_list(message: Message) -> None:
 
 @router.message(Command("create_task"))
 async def handle_create_task(message: Message) -> None:
-    """Creates a new task for the project."""
+    """Creates a new task for the project linked to the active chat/group."""
     text = message.text or ""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
@@ -112,6 +113,7 @@ async def handle_create_task(message: Message) -> None:
 
     title = " ".join(title_words) or "New Task"
     creator_id = message.from_user.id if message.from_user else 0
+    chat_id = message.chat.id
 
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
         assert uow.tasks is not None
@@ -120,6 +122,7 @@ async def handle_create_task(message: Message) -> None:
             assignee_username=assignee,
             status="TODO",
             created_by_telegram_id=creator_id,
+            telegram_chat_id=chat_id,
         )
         saved_task = await uow.tasks.save(task)
 
@@ -136,14 +139,15 @@ async def handle_create_task(message: Message) -> None:
 
 @router.message(Command("status"))
 async def handle_project_status(message: Message) -> None:
-    """Generates project status summary report."""
+    """Generates project status summary report for current chat/group."""
+    chat_id = message.chat.id
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
         assert uow.tasks is not None
-        tasks = await uow.tasks.list_all_tasks()
+        tasks = await uow.tasks.list_all_tasks(chat_id=chat_id)
 
     total = len(tasks)
     if total == 0:
-        await send_safe_reply(message, "📊 *Project Status*: No tasks created yet.")
+        await send_safe_reply(message, "📊 *Project Status*: No tasks created yet for this group.")
         return
 
     done_count = sum(1 for t in tasks if t.status == "DONE")
@@ -167,14 +171,15 @@ async def handle_project_status(message: Message) -> None:
 
 @router.message(Command("pull_updates"))
 async def handle_pull_updates(message: Message) -> None:
-    """Actively pulls status updates from assigned team members."""
+    """Actively pulls status updates from assigned team members in current group."""
+    chat_id = message.chat.id
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
         assert uow.tasks is not None
-        tasks = await uow.tasks.list_all_tasks()
+        tasks = await uow.tasks.list_all_tasks(chat_id=chat_id)
 
     open_tasks = [t for t in tasks if t.status in ("TODO", "IN_PROGRESS", "BLOCKED")]
     if not open_tasks:
-        await send_safe_reply(message, "🎉 All tasks are completed! No open status updates required.")
+        await send_safe_reply(message, "🎉 All tasks are completed for this group! No open status updates required.")
         return
 
     lines = ["📣 *Project Manager Status Check-In*\n"]
@@ -197,7 +202,7 @@ async def handle_pull_updates(message: Message) -> None:
 
 @router.message(Command("update_task"))
 async def handle_update_task(message: Message) -> None:
-    """Updates status of a task by ID prefix (e.g. /update_task 5d02ccee IN_PROGRESS)."""
+    """Updates status of a task by ID prefix within the current chat/group."""
     text = message.text or ""
     parts = text.split()
     if len(parts) < 3:
@@ -210,6 +215,7 @@ async def handle_update_task(message: Message) -> None:
     task_id = parts[1].strip()
     status_input = parts[2].strip().upper()
     valid_statuses = {"TODO", "IN_PROGRESS", "BLOCKED", "DONE"}
+    chat_id = message.chat.id
 
     if status_input not in valid_statuses:
         await send_safe_reply(
@@ -220,10 +226,10 @@ async def handle_update_task(message: Message) -> None:
 
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
         assert uow.tasks is not None
-        task = await uow.tasks.update_status(task_id, status_input)
+        task = await uow.tasks.update_status(task_id, status_input, chat_id=chat_id)
 
     if not task:
-        await send_safe_reply(message, f"❌ Task with ID prefix `{task_id}` not found.")
+        await send_safe_reply(message, f"❌ Task with ID prefix `{task_id}` not found in this group.")
         return
 
     await send_safe_reply(
@@ -239,7 +245,7 @@ async def handle_update_task(message: Message) -> None:
 @router.message(Command("close_task"))
 @router.message(Command("task_done"))
 async def handle_close_task(message: Message) -> None:
-    """Closes/completes a task by ID prefix (e.g. /close_task 5d02ccee)."""
+    """Closes/completes a task by ID prefix within current group."""
     text = message.text or ""
     parts = text.split()
     if len(parts) < 2:
@@ -250,13 +256,14 @@ async def handle_close_task(message: Message) -> None:
         return
 
     task_id = parts[1].strip()
+    chat_id = message.chat.id
 
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
         assert uow.tasks is not None
-        task = await uow.tasks.update_status(task_id, "DONE")
+        task = await uow.tasks.update_status(task_id, "DONE", chat_id=chat_id)
 
     if not task:
-        await send_safe_reply(message, f"❌ Task with ID prefix `{task_id}` not found.")
+        await send_safe_reply(message, f"❌ Task with ID prefix `{task_id}` not found in this group.")
         return
 
     await send_safe_reply(
@@ -311,6 +318,7 @@ async def handle_chat_message(
     service = conversation_service or _conversation_service
     user_id = str(message.from_user.id)
     telegram_id = message.from_user.id
+    chat_id = message.chat.id
 
     user_info = {
         "username": message.from_user.username,
@@ -332,6 +340,7 @@ async def handle_chat_message(
     response_dto = await service.process_user_message(
         input_dto=input_dto,
         telegram_id=telegram_id,
+        chat_id=chat_id,
         user_info=user_info,
     )
 

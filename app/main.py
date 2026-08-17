@@ -73,9 +73,24 @@ app = FastAPI(
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
-async def health_check() -> dict[str, str]:
+async def health_check() -> dict[str, Any]:
     """Health check endpoint for Docker & load balancer readiness probes."""
-    return {"status": "healthy", "environment": settings.APP_ENV}
+    db_healthy = True
+    try:
+        async with engine.connect() as conn:
+            from sqlalchemy import text
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.warning("Health probe database ping failed", error=str(exc))
+        db_healthy = False
+
+    return {
+        "status": "healthy" if db_healthy else "degraded",
+        "environment": settings.APP_ENV,
+        "components": {
+            "database": "up" if db_healthy else "down",
+        },
+    }
 
 
 @app.post("/webhook")

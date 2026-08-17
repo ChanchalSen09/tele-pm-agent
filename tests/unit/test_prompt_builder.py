@@ -73,7 +73,7 @@ def test_prompt_builder_xml_tagging() -> None:
         "<user_query>\nWhat is Python?\n</user_query>" in payload.formatted_user_prompt
     )
     assert "User Name: Bob" in payload.system_prompt
-    assert payload.prompt_version == "system_base:v1.0.0"
+    assert payload.prompt_version == "system_base:v3.0.0"
     assert payload.estimated_tokens > 0
 
 
