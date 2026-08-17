@@ -58,7 +58,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/telegram_bot_db
           REDIS_URL: redis://localhost:6379/0
-          TELEGRAM_BOT_TOKEN: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-          GEMINI_API_KEY: AIzaSyFakeKeyForCiTesting123456789
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || 'ci_dummy_bot_token' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'ci_dummy_gemini_key' }}
         run: |
           python -m pytest -v
