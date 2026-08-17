@@ -31,11 +31,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application Lifespan Context Manager."""
     logger.info("Initializing Application Lifecycle...", env=settings.APP_ENV)
 
-    # Auto-synchronize PostgreSQL tables on boot
+    # Auto-synchronize PostgreSQL tables and schema columns on boot
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database tables auto-synchronized.")
+            from sqlalchemy import text
+
+            await conn.execute(
+                text(
+                    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_conversations_telegram_chat_id ON conversations (telegram_chat_id);"
+                )
+            )
+        logger.info("Database tables and schema auto-synchronized successfully.")
     except Exception as exc:
         logger.error("Failed to auto-sync database tables on startup", error=str(exc))
 
