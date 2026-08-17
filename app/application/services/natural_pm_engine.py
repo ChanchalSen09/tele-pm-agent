@@ -98,9 +98,9 @@ async def parse_and_execute_natural_intent(
         if raw_assignee and not is_valid_member:
             members_summary = format_group_members_summary(users_list)
             reply_text = (
-                f"⚠️ *Cannot Assign Task*: **{raw_assignee}** is not present in this group.\n\n"
-                f"👥 *Registered Group Members*: {members_summary}\n\n"
-                f"Please assign the task to an existing group member!"
+                f"Hey! **{raw_assignee}** isn't in our group chat yet.\n\n"
+                f"👥 **Current Team Members**: {members_summary}\n\n"
+                f"Who from the team should I assign this task to?"
             )
             return NaturalPMResult(
                 response_text=reply_text, action_type="INVALID_ASSIGNEE"
@@ -119,13 +119,10 @@ async def parse_and_execute_natural_intent(
         # Invalidate task board cache for this chat
         default_task_board_cache.invalidate(chat_id)
 
-        assignee_str = f" to @{resolved_assignee}" if resolved_assignee else ""
         reply_text = (
-            f"✅ *Got it! I've created the task:*\n\n"
-            f"📌 *ID*: `{str(saved_task.id)[:8]}`\n"
-            f"📝 *Title*: {saved_task.title}\n"
-            f"👤 *Assigned*: {assignee_str or 'Unassigned'}\n"
-            f"🚦 *Status*: `TODO`"
+            f"Got it! I've logged the task **{saved_task.title}**"
+            + (f" and assigned it to @{resolved_assignee}." if resolved_assignee else ".")
+            + (f"\n\nHey @{resolved_assignee}, whenever you get a chance, let us know if you need anything to get started!" if resolved_assignee else "")
         )
         logger.info(
             "Natural PM Engine Created Task",
@@ -155,18 +152,12 @@ async def parse_and_execute_natural_intent(
         assert uow.tasks is not None
         task = await uow.tasks.update_status(task_id, target_status, chat_id=chat_id)
         if not task:
-            reply_text = f"❌ I couldn't find a task with ID prefix `{task_id}` in this group."
+            reply_text = f"Couldn't find a task with ID prefix `{task_id}` in our board."
         else:
             # Invalidate task board cache for this chat
             default_task_board_cache.invalidate(chat_id)
             status_emoji = "🟢" if target_status == "DONE" else "🟡"
-            reply_text = (
-                f"🔄 *Updated Task Status!*\n\n"
-                f"📌 *ID*: `{str(task.id)[:8]}`\n"
-                f"📝 *Title*: {task.title}\n"
-                f"👤 *Assigned*: @{task.assignee_username or 'Unassigned'}\n"
-                f"🚦 *Status*: `{task.status}` {status_emoji}"
-            )
+            reply_text = f"Updated **{task.title}** status to `{task.status}` {status_emoji}."
         logger.info(
             "Natural PM Engine Updated Task",
             task_id=task_id,
