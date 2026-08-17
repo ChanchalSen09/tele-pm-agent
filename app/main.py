@@ -47,6 +47,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     "CREATE INDEX IF NOT EXISTS ix_conversations_telegram_chat_id ON conversations (telegram_chat_id);"
                 )
             )
+            await conn.execute(
+                text(
+                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_tasks_telegram_chat_id ON tasks (telegram_chat_id);"
+                )
+            )
         logger.info("Database tables and schema auto-synchronized successfully.")
     except Exception as exc:
         logger.error("Failed to auto-sync database tables on startup", error=str(exc))
