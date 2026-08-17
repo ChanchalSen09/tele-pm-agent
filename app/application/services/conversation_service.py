@@ -9,8 +9,12 @@ from app.application.dtos.conversation import (
     ConversationResponseDTO,
     UserMessageInputDTO,
 )
+from app.application.services.natural_pm_engine import (
+    parse_and_execute_natural_intent,
+)
 from app.application.services.prompt_builder import PromptBuilder
 from app.core.exceptions import ValidationException
+from app.core.guardrails import validate_query_scope
 from app.core.security import sanitize_input_text
 from app.domain.interfaces.llm import ILLMProvider, LLMMessage
 from app.infrastructure.database.models import (
@@ -46,6 +50,7 @@ class ConversationService:
         self,
         input_dto: UserMessageInputDTO,
         telegram_id: int | None = None,
+        chat_id: int | None = None,
         user_info: dict[str, Any] | None = None,
     ) -> ConversationResponseDTO:
         """Executes full conversational turn pipeline across Domain, AI, and Persistence layers."""
@@ -59,11 +64,25 @@ class ConversationService:
         if not sanitized_text:
             raise ValidationException("User message text cannot be empty.")
 
+        # Guardrail scope evaluation (blocks off-topic code generation & prompt injection attempts)
+        guardrail_res = validate_query_scope(sanitized_text)
+        if not guardrail_res.is_allowed:
+            return ConversationResponseDTO(
+                response_text=guardrail_res.response_text or "Query not allowed.",
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                latency_ms=0,
+                finish_reason="GUARDRAIL_REFUSAL",
+                model_name="guardrail_filter",
+            )
+
         # Execute persistence workflow if Unit of Work is injected
         if self.unit_of_work and telegram_id:
             return await self._process_with_persistence(
                 input_dto=input_dto,
                 telegram_id=telegram_id,
+                chat_id=chat_id,
                 sanitized_text=sanitized_text,
                 user_info=user_info or {},
             )
@@ -77,6 +96,7 @@ class ConversationService:
         self,
         input_dto: UserMessageInputDTO,
         telegram_id: int,
+        chat_id: int | None,
         sanitized_text: str,
         user_info: dict[str, Any],
     ) -> ConversationResponseDTO:
@@ -100,11 +120,52 @@ class ConversationService:
                     )
                 )
 
-            # 2. Resolve Active Conversation Thread
-            conversation = await uow.conversations.get_active_by_user_id(user.id)
+            # 2. Resolve Active Conversation Thread for User & Chat
+            conversation = await uow.conversations.get_active_by_user_id(
+                user.id, chat_id=chat_id
+            )
             if not conversation:
                 conversation = await uow.conversations.save(
-                    ConversationModel(user_id=user.id, title="New Conversation")
+                    ConversationModel(
+                        user_id=user.id,
+                        telegram_chat_id=chat_id,
+                        title="New Conversation",
+                    )
+                )
+
+            # 2.5 Evaluate Natural Language PM Action Execution (command-free plain text interaction)
+            natural_pm_res = await parse_and_execute_natural_intent(
+                user_text=sanitized_text,
+                chat_id=chat_id,
+                creator_id=telegram_id,
+                uow=uow,
+            )
+            if natural_pm_res:
+                user_seq = await uow.messages.get_next_sequence_number(conversation.id)
+                await uow.messages.save(
+                    MessageModel(
+                        conversation_id=conversation.id,
+                        sequence_number=user_seq,
+                        sender_role="user",
+                        content=sanitized_text,
+                    )
+                )
+                await uow.messages.save(
+                    MessageModel(
+                        conversation_id=conversation.id,
+                        sequence_number=user_seq + 1,
+                        sender_role="assistant",
+                        content=natural_pm_res.response_text,
+                    )
+                )
+                return ConversationResponseDTO(
+                    response_text=natural_pm_res.response_text,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    total_tokens=0,
+                    latency_ms=0,
+                    finish_reason="NATURAL_PM_ACTION",
+                    model_name="natural_pm_engine",
                 )
 
             # 3. Fetch Recent Message History
@@ -116,10 +177,10 @@ class ConversationService:
                 for msg in recent_db_messages
             ]
 
-            # 4. Fetch Active Project Tasks for Context Awareness
+            # 4. Fetch Active Project Tasks for Context Awareness (isolated by chat_id)
             task_summary = "No active tasks in database."
             if uow.tasks:
-                tasks = await uow.tasks.list_all_tasks()
+                tasks = await uow.tasks.list_all_tasks(chat_id=chat_id)
                 if tasks:
                     task_lines = [
                         f"- Task '{t.title}' (ID: {str(t.id)[:8]}, Status: {t.status}, Assignee: @{t.assignee_username or 'Unassigned'})"

@@ -11,6 +11,9 @@ from app.infrastructure.database.repositories.conversation_repository import (
 from app.infrastructure.database.repositories.message_repository import (
     MessageRepository,
 )
+from app.infrastructure.database.repositories.organization_repository import (
+    OrganizationRepository,
+)
 from app.infrastructure.database.repositories.task_repository import TaskRepository
 from app.infrastructure.database.repositories.user_repository import UserRepository
 
@@ -25,6 +28,7 @@ class AsyncUnitOfWork:
         self.conversations: ConversationRepository | None = None
         self.messages: MessageRepository | None = None
         self.tasks: TaskRepository | None = None
+        self.organizations: OrganizationRepository | None = None
 
     async def __aenter__(self) -> Self:
         """Enters async transaction context and initializes repository bounds."""
@@ -33,6 +37,7 @@ class AsyncUnitOfWork:
         self.conversations = ConversationRepository(self.session)
         self.messages = MessageRepository(self.session)
         self.tasks = TaskRepository(self.session)
+        self.organizations = OrganizationRepository(self.session)
         return self
 
     async def __aexit__(

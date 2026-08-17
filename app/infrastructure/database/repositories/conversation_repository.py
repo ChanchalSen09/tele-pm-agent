@@ -18,15 +18,21 @@ class ConversationRepository(
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session=session, model_cls=ConversationModel)
 
-    async def get_active_by_user_id(self, user_id: UUID) -> ConversationModel | None:
-        """Fetches active conversation thread for a specific user ID."""
+    async def get_active_by_user_id(
+        self, user_id: UUID, chat_id: int | None = None
+    ) -> ConversationModel | None:
+        """Fetches active conversation thread for a specific user ID and optional chat_id."""
+        conditions = [
+            ConversationModel.user_id == user_id,
+            ConversationModel.is_active.is_(True),
+            ConversationModel.deleted_at.is_(None),
+        ]
+        if chat_id is not None:
+            conditions.append(ConversationModel.telegram_chat_id == chat_id)
+
         stmt = (
             select(ConversationModel)
-            .where(
-                ConversationModel.user_id == user_id,
-                ConversationModel.is_active.is_(True),
-                ConversationModel.deleted_at.is_(None),
-            )
+            .where(*conditions)
             .order_by(ConversationModel.created_at.desc())
         )
         result = await self.session.execute(stmt)
