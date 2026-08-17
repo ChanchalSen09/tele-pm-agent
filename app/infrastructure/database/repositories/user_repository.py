@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.interfaces.repository import IUserRepository
-from app.infrastructure.database.models import UserModel
+from app.infrastructure.database.models import ConversationModel, UserModel
 from app.infrastructure.database.repository import SQLAlchemyBaseRepository
 
 
@@ -22,3 +22,19 @@ class UserRepository(SQLAlchemyBaseRepository[UserModel], IUserRepository):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_by_chat_id(self, chat_id: int | None) -> list[UserModel]:
+        """Fetches registered users participating in a specific chat_id."""
+        if not chat_id:
+            return []
+        stmt = (
+            select(UserModel)
+            .join(ConversationModel, ConversationModel.user_id == UserModel.id)
+            .where(
+                ConversationModel.telegram_chat_id == chat_id,
+                UserModel.deleted_at.is_(None),
+            )
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

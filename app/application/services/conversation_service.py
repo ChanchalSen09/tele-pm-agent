@@ -13,6 +13,7 @@ from app.application.services.natural_pm_engine import (
     parse_and_execute_natural_intent,
 )
 from app.application.services.prompt_builder import PromptBuilder
+from app.application.services.user_resolver import format_group_members_summary
 from app.core.exceptions import ValidationException
 from app.core.guardrails import validate_query_scope
 from app.core.security import sanitize_input_text
@@ -133,12 +134,17 @@ class ConversationService:
                     )
                 )
 
+            # 2.4 Fetch Registered Group Members for Chat
+            group_users = await uow.users.list_by_chat_id(chat_id)
+            group_members_str = format_group_members_summary(group_users)
+
             # 2.5 Evaluate Natural Language PM Action Execution (command-free plain text interaction)
             natural_pm_res = await parse_and_execute_natural_intent(
                 user_text=sanitized_text,
                 chat_id=chat_id,
                 creator_id=telegram_id,
                 uow=uow,
+                group_users=group_users,
             )
             if natural_pm_res:
                 user_seq = await uow.messages.get_next_sequence_number(conversation.id)
@@ -196,6 +202,7 @@ class ConversationService:
                     "user_name": user.first_name,
                     "tier": user.tier,
                     "project_tasks": task_summary,
+                    "group_members": group_members_str,
                 },
             )
 
