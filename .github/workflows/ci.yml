@@ -1,0 +1,64 @@
+name: CI & Code Quality
+
+on:
+  push:
+    branches: [ main, feature/*, fix/* ]
+  pull_request:
+    branches: [ main, feature/*, fix/* ]
+
+jobs:
+  test:
+    name: Run Unit Tests & Lint Checks
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: telegram_bot_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev] || pip install pytest pytest-asyncio structlog fastapi uvicorn sqlalchemy asyncpg alembic google-genai ruff mypy
+
+      - name: Run Ruff Linting
+        run: |
+          python -m ruff check app tests
+
+      - name: Run Pytest Test Suite
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/telegram_bot_db
+          REDIS_URL: redis://localhost:6379/0
+          TELEGRAM_BOT_TOKEN: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+          GEMINI_API_KEY: AIzaSyFakeKeyForCiTesting123456789
+        run: |
+          python -m pytest -v

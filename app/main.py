@@ -49,17 +49,37 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             await conn.execute(
                 text(
-                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMP WITH TIME ZONE;"
                 )
             )
             await conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS ix_tasks_telegram_chat_id ON tasks (telegram_chat_id);"
+                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'HIGH';"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'MEMBER';"
                 )
             )
         logger.info("Database tables and schema auto-synchronized successfully.")
     except Exception as exc:
         logger.error("Failed to auto-sync database tables on startup", error=str(exc))
+
+    # Launch periodic background due-date reminder task
+    async def _reminder_loop() -> None:
+        from app.application.services.reminder_service import (
+            check_and_send_due_task_reminders,
+        )
+        from app.infrastructure.database.session import AsyncSessionFactory
+
+        while True:
+            await asyncio.sleep(1800)  # Check every 30 minutes
+            await check_and_send_due_task_reminders(bot, AsyncSessionFactory)
+
+    reminder_task = asyncio.create_task(_reminder_loop())
+    _background_tasks.add(reminder_task)
+    reminder_task.add_done_callback(_background_tasks.discard)
 
     if not settings.TELEGRAM_WEBHOOK_URL:
         logger.info("Starting Telegram Bot in Long Polling mode...")

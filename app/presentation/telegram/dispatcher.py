@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from app.presentation.telegram.middleware.context import RequestContextMiddleware
 from app.presentation.telegram.middleware.errors import ExceptionHandlingMiddleware
 from app.presentation.telegram.middleware.logging import LoggingMiddleware
-from app.presentation.telegram.routers import chat, errors, health, start
+from app.presentation.telegram.routers import chat, errors, health, standup, start
 
 logger = structlog.get_logger(__name__)
 
@@ -40,7 +40,7 @@ def setup_dispatcher() -> Dispatcher:
     dp.update.middleware(ExceptionHandlingMiddleware())
 
     # Register Routers safely handling module reloads
-    for r in (start.router, health.router, chat.router, errors.router):
+    for r in (start.router, health.router, standup.router, chat.router, errors.router):
         r._parent_router = None
         dp.include_router(r)
 
