@@ -33,46 +33,47 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application Lifespan Context Manager."""
     logger.info("Initializing Application Lifecycle...", env=settings.APP_ENV)
 
-    # Auto-synchronize PostgreSQL tables and schema columns on boot
+    # Auto-synchronize PostgreSQL tables and schema columns on boot with connection timeout
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        async with asyncio.timeout(10.0):
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
 
-            await conn.execute(
-                text(
-                    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                await conn.execute(
+                    text(
+                        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                    )
                 )
-            )
-            await conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_conversations_telegram_chat_id ON conversations (telegram_chat_id);"
+                await conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_conversations_telegram_chat_id ON conversations (telegram_chat_id);"
+                    )
                 )
-            )
-            await conn.execute(
-                text(
-                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                await conn.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;"
+                    )
                 )
-            )
-            await conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_tasks_telegram_chat_id ON tasks (telegram_chat_id);"
+                await conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_tasks_telegram_chat_id ON tasks (telegram_chat_id);"
+                    )
                 )
-            )
-            await conn.execute(
-                text(
-                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMP WITH TIME ZONE;"
+                await conn.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMP WITH TIME ZONE;"
+                    )
                 )
-            )
-            await conn.execute(
-                text(
-                    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'HIGH';"
+                await conn.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'HIGH';"
+                    )
                 )
-            )
-            await conn.execute(
-                text(
-                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'MEMBER';"
+                await conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'MEMBER';"
+                    )
                 )
-            )
         logger.info("Database tables and schema auto-synchronized successfully.")
     except Exception as exc:
         logger.error("Failed to auto-sync database tables on startup", error=str(exc))
@@ -87,18 +88,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _background_tasks.add(reminder_task)
     reminder_task.add_done_callback(_background_tasks.discard)
 
-    if not settings.TELEGRAM_WEBHOOK_URL:
-        logger.info("Starting Telegram Bot in Long Polling mode...")
-        await bot.delete_webhook(drop_pending_updates=False)
-        task = asyncio.create_task(dp.start_polling(bot))
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
-    else:
-        logger.info("Setting Telegram Webhook...", url=settings.TELEGRAM_WEBHOOK_URL)
-        await bot.set_webhook(
-            url=settings.TELEGRAM_WEBHOOK_URL,
-            secret_token=settings.TELEGRAM_WEBHOOK_SECRET.get_secret_value() or None,
-        )
+    # Async background task for Telegram Bot setup so port binding occurs immediately
+    async def _init_telegram() -> None:
+        try:
+            if not settings.TELEGRAM_WEBHOOK_URL:
+                logger.info("Starting Telegram Bot in Long Polling mode...")
+                await bot.delete_webhook(drop_pending_updates=False)
+                task = asyncio.create_task(dp.start_polling(bot))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+            else:
+                logger.info("Setting Telegram Webhook...", url=settings.TELEGRAM_WEBHOOK_URL)
+                await bot.set_webhook(
+                    url=settings.TELEGRAM_WEBHOOK_URL,
+                    secret_token=settings.TELEGRAM_WEBHOOK_SECRET.get_secret_value() or None,
+                )
+        except Exception as exc:
+            logger.error("Failed to initialize Telegram Bot connection", error=str(exc))
+
+    telegram_init_task = asyncio.create_task(_init_telegram())
+    _background_tasks.add(telegram_init_task)
+    telegram_init_task.add_done_callback(_background_tasks.discard)
 
     yield
 
@@ -110,6 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await bot.session.close()
     logger.info("Application successfully shutdown.")
+
 
 
 app = FastAPI(
