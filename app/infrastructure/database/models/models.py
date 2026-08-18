@@ -171,6 +171,10 @@ class TaskModel(Base):
     telegram_chat_id: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True, index=True
     )
+    last_checkin_at: Mapped[Any | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    progress_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class OrganizationModel(Base):
@@ -192,5 +196,30 @@ class OrganizationModel(Base):
         Integer, default=0, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class StandupLogModel(Base):
+    """ORM Model representing proactive standup check-in logs (`standup_logs` table)."""
+
+    __tablename__ = "standup_logs"
+
+    telegram_chat_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+    telegram_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
+    checkin_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="DAILY_STANDUP"
+    )  # 'DAILY_STANDUP', 'MIDDAY_CHECKIN'
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
+    user_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(50), default="PENDING", nullable=False, index=True
+    )  # 'PENDING', 'RESPONDED', 'EXPIRED'
+
 
 
