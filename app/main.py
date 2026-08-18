@@ -71,6 +71,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
                 await conn.execute(
                     text(
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMP WITH TIME ZONE;"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress_notes TEXT;"
+                    )
+                )
+                await conn.execute(
+                    text(
                         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'MEMBER';"
                     )
                 )
