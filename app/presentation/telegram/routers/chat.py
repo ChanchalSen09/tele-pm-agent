@@ -12,6 +12,10 @@ from aiogram.types import Message
 
 from app.application.dtos.conversation import UserMessageInputDTO
 from app.application.services.conversation_service import ConversationService
+from app.application.services.standup_engine import (
+    process_standup_user_update,
+    trigger_group_standup,
+)
 from app.infrastructure.database.models.models import TaskModel
 from app.infrastructure.database.repositories import AsyncUnitOfWork
 from app.infrastructure.database.session import AsyncSessionFactory
@@ -25,6 +29,16 @@ _conversation_service = ConversationService(
     llm_provider=get_gemini_client(),
     unit_of_work=AsyncUnitOfWork(AsyncSessionFactory),
 )
+
+
+@router.message(Command("standup"))
+@router.message(Command("checkin"))
+async def handle_standup_command(message: Message) -> None:
+    """Triggers group daily standup tagging active assignees."""
+    chat_id = message.chat.id
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        standup_text = await trigger_group_standup(chat_id=chat_id, uow=uow)
+    await send_safe_reply(message, standup_text)
 
 
 def markdown_to_telegram_html(text: str) -> str:
@@ -380,6 +394,19 @@ async def handle_chat_message(
     user_id = str(message.from_user.id)
     telegram_id = message.from_user.id
     chat_id = message.chat.id
+
+    # Check for Standup/Progress Update Reply
+    async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        standup_reply = await process_standup_user_update(
+            user_id=telegram_id,
+            username=message.from_user.username,
+            user_text=user_text,
+            chat_id=chat_id,
+            uow=uow,
+        )
+        if standup_reply:
+            await send_safe_reply(message, standup_reply)
+            return
 
     user_info = {
         "username": message.from_user.username,

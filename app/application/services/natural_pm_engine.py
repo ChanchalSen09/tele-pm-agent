@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import structlog
 
 from app.application.services.user_resolver import (
+    check_user_ooo_status,
     format_group_members_summary,
     resolve_and_validate_assignee,
 )
@@ -90,20 +91,21 @@ async def parse_and_execute_natural_intent(  # noqa: PLR0911, PLR0912, PLR0915
             flags=re.IGNORECASE,
         ).strip()
 
-        # Validate assignee against registered group members
-        resolved_assignee, is_valid_member = resolve_and_validate_assignee(
-            raw_assignee, users_list
+        # Resolve current sender entity from group_users
+        sender_user = next((u for u in users_list if u.telegram_id == creator_id), None)
+
+        # Validate assignee against registered group members with fuzzy matching & self-assignment
+        resolved_assignee, is_valid_member, ambiguity_msg = resolve_and_validate_assignee(
+            raw_assignee, users_list, sender_user=sender_user
         )
 
         if raw_assignee and not is_valid_member:
-            members_summary = format_group_members_summary(users_list)
             reply_text = (
-                f"Hey! **{raw_assignee}** isn't in our group chat yet.\n\n"
-                f"👥 **Current Team Members**: {members_summary}\n\n"
-                f"Who from the team should I assign this task to?"
+                ambiguity_msg
+                or f"Hey! **{raw_assignee}** isn't in our group chat yet."
             )
             return NaturalPMResult(
-                response_text=reply_text, action_type="INVALID_ASSIGNEE"
+                response_text=reply_text, action_type="AMBIGUOUS_ASSIGNEE"
             )
 
         assert uow.tasks is not None
@@ -119,11 +121,17 @@ async def parse_and_execute_natural_intent(  # noqa: PLR0911, PLR0912, PLR0915
         # Invalidate task board cache for this chat
         default_task_board_cache.invalidate(chat_id)
 
+        # Check OOO / Vacation warning status
+        ooo_warning = check_user_ooo_status(resolved_assignee, tasks=await uow.tasks.list_all_tasks(chat_id=chat_id))
+
         reply_text = (
             f"Got it! I've logged the task **{saved_task.title}**"
             + (f" and assigned it to @{resolved_assignee}." if resolved_assignee else ".")
             + (f"\n\nHey @{resolved_assignee}, whenever you get a chance, let us know if you need anything to get started!" if resolved_assignee else "")
         )
+        if ooo_warning:
+            reply_text += f"\n\n{ooo_warning}"
+
         logger.info(
             "Natural PM Engine Created Task",
             task_id=str(saved_task.id),
@@ -131,6 +139,46 @@ async def parse_and_execute_natural_intent(  # noqa: PLR0911, PLR0912, PLR0915
             assignee=resolved_assignee,
         )
         return NaturalPMResult(response_text=reply_text, action_type="CREATE_TASK")
+
+    # 2. Natural Task Transfer / Re-assignment Intent
+    # Matches patterns like: "transfer task 5d02ccee to Aditya", "reassign task 5d02ccee to Sakib", "hand off task 5d02ccee to me"
+    reassign_match = re.search(
+        r"^(please\s+)?(transfer|reassign|re-assign|hand\s+off)\s+(task\s+)?([a-f0-9]{8,36})\s+(to|for)\s+@?([a-zA-Z0-9_\s]+)$",
+        text_lower,
+        re.IGNORECASE,
+    )
+    if reassign_match:
+        task_id_input = reassign_match.group(4).strip()
+        new_assignee_raw = reassign_match.group(6).strip()
+
+        sender_user = next((u for u in users_list if u.telegram_id == creator_id), None)
+        resolved_new_assignee, is_valid_m, ambig_m = resolve_and_validate_assignee(
+            new_assignee_raw, users_list, sender_user=sender_user
+        )
+
+        if new_assignee_raw and not is_valid_m:
+            return NaturalPMResult(
+                response_text=ambig_m or f"Hey! **{new_assignee_raw}** isn't registered in our group chat yet.",
+                action_type="AMBIGUOUS_ASSIGNEE",
+            )
+
+        assert uow.tasks is not None
+        task = await uow.tasks.get_by_id_prefix(task_id_input, chat_id=chat_id)
+        if not task:
+            reply_text = f"Couldn't find a task with ID prefix `{task_id_input}` in our board."
+        else:
+            old_assignee = task.assignee_username
+            task.assignee_username = resolved_new_assignee
+            await uow.tasks.save(task)
+            default_task_board_cache.invalidate(chat_id)
+
+            reply_text = (
+                f"🔄 *Task Re-assigned Successfully!*\n\n"
+                f"📌 *Task*: `{str(task.id)[:8]}` ({task.title})\n"
+                f"👤 *Transferred*: from @{old_assignee or 'Unassigned'} ➔ *@ {resolved_new_assignee}*\n\n"
+                f"Hey @{resolved_new_assignee}, task `{str(task.id)[:8]}` is now on your board!"
+            )
+        return NaturalPMResult(response_text=reply_text, action_type="REASSIGN_TASK")
 
     # 2. Natural Task Status Update / Close Intent
     # Matches patterns like: "mark task 5d02ccee as done", "set task 5d02ccee to in_progress", "close task 5d02ccee"
