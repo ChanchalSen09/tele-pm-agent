@@ -103,8 +103,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             if not settings.TELEGRAM_WEBHOOK_URL:
                 logger.info("Starting Telegram Bot in Long Polling mode...")
-                await bot.delete_webhook(drop_pending_updates=False)
-                task = asyncio.create_task(dp.start_polling(bot))
+                await bot.delete_webhook(drop_pending_updates=True)
+                task = asyncio.create_task(dp.start_polling(bot, handle_signals=False))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             else:
@@ -112,6 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await bot.set_webhook(
                     url=settings.TELEGRAM_WEBHOOK_URL,
                     secret_token=settings.TELEGRAM_WEBHOOK_SECRET.get_secret_value() or None,
+                    drop_pending_updates=True,
                 )
         except Exception as exc:
             logger.error("Failed to initialize Telegram Bot connection", error=str(exc))
@@ -123,12 +124,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("Shutting down Application Lifecycle...")
-    if not settings.TELEGRAM_WEBHOOK_URL:
-        await dp.stop_polling()
-    else:
-        await bot.delete_webhook()
+    try:
+        if not settings.TELEGRAM_WEBHOOK_URL:
+            await dp.stop_polling()
+        else:
+            await bot.delete_webhook()
+        await bot.session.close()
+    except Exception as exc:
+        logger.warning("Error during bot session shutdown", error=str(exc))
 
-    await bot.session.close()
     logger.info("Application successfully shutdown.")
 
 
