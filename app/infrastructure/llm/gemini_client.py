@@ -72,106 +72,116 @@ class GeminiClientAdapter(ILLMProvider):
             max_output_tokens=max_tokens,
         )
 
+        candidate_models = [self.model_name]
+        for fallback in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+            if fallback != self.model_name:
+                candidate_models.append(fallback)
+
         attempt = 0
         last_exception: Exception | None = None
 
-        while attempt < self.max_retries:
-            try:
-                attempt += 1
-                logger.debug(
-                    "Dispatching Gemini API request",
-                    attempt=attempt,
-                    model=self.model_name,
-                )
+        for model_to_use in candidate_models:
+            model_attempts = 0
+            while model_attempts < self.max_retries:
+                try:
+                    attempt += 1
+                    model_attempts += 1
+                    logger.debug(
+                        "Dispatching Gemini API request",
+                        attempt=attempt,
+                        model=model_to_use,
+                    )
 
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self.client.models.generate_content,
-                        model=self.model_name,
-                        contents=contents,
-                        config=config,
-                    ),
-                    timeout=self.timeout_seconds,
-                )
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self.client.models.generate_content,
+                            model=model_to_use,
+                            contents=contents,
+                            config=config,
+                        ),
+                        timeout=self.timeout_seconds,
+                    )
 
-                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                    latency_ms = int((time.perf_counter() - start_time) * 1000)
 
-                prompt_tokens = (
-                    int(response.usage_metadata.prompt_token_count)
-                    if response.usage_metadata
-                    and response.usage_metadata.prompt_token_count is not None
-                    else 0
-                )
-                completion_tokens = (
-                    int(response.usage_metadata.candidates_token_count)
-                    if response.usage_metadata
-                    and response.usage_metadata.candidates_token_count is not None
-                    else 0
-                )
-                total_tokens = (
-                    int(response.usage_metadata.total_token_count)
-                    if response.usage_metadata
-                    and response.usage_metadata.total_token_count is not None
-                    else 0
-                )
+                    prompt_tokens = (
+                        int(response.usage_metadata.prompt_token_count)
+                        if response.usage_metadata
+                        and response.usage_metadata.prompt_token_count is not None
+                        else 0
+                    )
+                    completion_tokens = (
+                        int(response.usage_metadata.candidates_token_count)
+                        if response.usage_metadata
+                        and response.usage_metadata.candidates_token_count is not None
+                        else 0
+                    )
+                    total_tokens = (
+                        int(response.usage_metadata.total_token_count)
+                        if response.usage_metadata
+                        and response.usage_metadata.total_token_count is not None
+                        else 0
+                    )
 
-                finish_reason = "STOP"
-                if response.candidates and response.candidates[0].finish_reason:
-                    finish_reason = str(response.candidates[0].finish_reason)
+                    finish_reason = "STOP"
+                    if response.candidates and response.candidates[0].finish_reason:
+                        finish_reason = str(response.candidates[0].finish_reason)
 
-                generated_text = response.text or ""
-                self._validate_response_text(generated_text)
+                    generated_text = response.text or ""
+                    self._validate_response_text(generated_text)
 
-                logger.info(
-                    "Gemini Completion Generation Succeeded",
-                    model=self.model_name,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                    latency_ms=latency_ms,
-                    finish_reason=finish_reason,
-                )
+                    logger.info(
+                        "Gemini Completion Generation Succeeded",
+                        model=model_to_use,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        latency_ms=latency_ms,
+                        finish_reason=finish_reason,
+                    )
 
-                return LLMResponse(
-                    generated_text=generated_text,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                    latency_ms=latency_ms,
-                    finish_reason=finish_reason,
-                    model_name=self.model_name,
-                )
+                    return LLMResponse(
+                        generated_text=generated_text,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        latency_ms=latency_ms,
+                        finish_reason=finish_reason,
+                        model_name=model_to_use,
+                    )
 
-            except TimeoutError:
-                logger.warning(
-                    "Gemini API call timed out",
-                    attempt=attempt,
-                    timeout=self.timeout_seconds,
-                )
-                last_exception = LLMException("Gemini API request execution timed out.")
-            except Exception as e:
-                err_str = str(e)
-                is_rate_limit = (
-                    "429" in err_str
-                    or "RESOURCE_EXHAUSTED" in err_str
-                    or "quota" in err_str.lower()
-                )
-                logger.warning(
-                    "Gemini API execution attempt failed",
-                    attempt=attempt,
-                    is_rate_limit=is_rate_limit,
-                    error=err_str,
-                )
-                if is_rate_limit:
-                    last_exception = RateLimitExceededException(retry_after=15 * attempt)
-                else:
-                    last_exception = LLMException(f"Gemini API failure: {err_str}")
+                except TimeoutError:
+                    logger.warning(
+                        "Gemini API call timed out",
+                        attempt=attempt,
+                        model=model_to_use,
+                        timeout=self.timeout_seconds,
+                    )
+                    last_exception = LLMException("Gemini API request execution timed out.")
+                except Exception as e:
+                    err_str = str(e)
+                    is_rate_limit = (
+                        "429" in err_str
+                        or "RESOURCE_EXHAUSTED" in err_str
+                        or "quota" in err_str.lower()
+                    )
+                    logger.warning(
+                        "Gemini API execution attempt failed",
+                        attempt=attempt,
+                        model=model_to_use,
+                        is_rate_limit=is_rate_limit,
+                        error=err_str,
+                    )
+                    if is_rate_limit:
+                        last_exception = RateLimitExceededException(retry_after=15 * attempt)
+                    else:
+                        last_exception = LLMException(f"Gemini API failure: {err_str}")
 
-                if attempt < self.max_retries:
-                    base_delay = 5.0 if is_rate_limit else 1.0
-                    jitter = random.uniform(0.8, 1.2)
-                    backoff_delay = ((2 ** (attempt - 1)) * base_delay) * jitter
-                    await asyncio.sleep(backoff_delay)
+                    if model_attempts < self.max_retries:
+                        base_delay = 5.0 if is_rate_limit else 1.0
+                        jitter = random.uniform(0.8, 1.2)
+                        backoff_delay = ((2 ** (model_attempts - 1)) * base_delay) * jitter
+                        await asyncio.sleep(backoff_delay)
 
         raise last_exception or LLMException(
             "Gemini completion failed after max retries."
