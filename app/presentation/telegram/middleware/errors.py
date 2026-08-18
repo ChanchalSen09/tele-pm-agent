@@ -38,7 +38,6 @@ class ExceptionHandlingMiddleware(BaseMiddleware):
                 error=str(exc),
                 exc_info=True,
             )
-            correlation_id = data.get("correlation_id", "N/A")
             await self._respond_error(
                 event,
                 "🤖 *I ran into a temporary hiccup while processing your message.*\n\nPlease try again in a few seconds!",

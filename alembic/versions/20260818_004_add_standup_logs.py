@@ -6,17 +6,18 @@ Create Date: 2026-08-18 14:20:00
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import context, op
+
 # revision identifiers, used by Alembic.
 revision: str = "004_add_standup_logs"
-down_revision: Union[str, None] = "003_add_due_date_to_tasks"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "003_add_due_date_to_tasks"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

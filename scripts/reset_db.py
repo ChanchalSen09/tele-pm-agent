@@ -4,7 +4,6 @@ Safely drops all legacy/corrupted database tables and recreates a 100% fresh, cl
 """
 
 import asyncio
-import os
 
 import structlog
 from sqlalchemy import text
