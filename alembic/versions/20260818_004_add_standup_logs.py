@@ -1,6 +1,6 @@
 """Add standup_logs table and checkin columns to tasks table.
 
-Revision ID: 004_add_standup_logs_and_checkin_columns
+Revision ID: 004_add_standup_logs
 Revises: 003_add_due_date_to_tasks
 Create Date: 2026-08-18 14:20:00
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "004_add_standup_logs_and_checkin_columns"
+revision: str = "004_add_standup_logs"
 down_revision: Union[str, None] = "003_add_due_date_to_tasks"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -23,6 +23,7 @@ def upgrade() -> None:
     if context.is_offline_mode():
         op.add_column("tasks", sa.Column("last_checkin_at", sa.DateTime(timezone=True), nullable=True))
         op.add_column("tasks", sa.Column("progress_notes", sa.Text(), nullable=True))
+        op.add_column("users", sa.Column("role", sa.String(length=50), server_default=sa.text("'MEMBER'"), nullable=False))
 
         op.create_table(
             "standup_logs",
@@ -52,6 +53,10 @@ def upgrade() -> None:
 
     if "progress_notes" not in task_columns:
         op.add_column("tasks", sa.Column("progress_notes", sa.Text(), nullable=True))
+
+    user_columns = [col["name"] for col in inspector.get_columns("users")]
+    if "role" not in user_columns:
+        op.add_column("users", sa.Column("role", sa.String(length=50), server_default=sa.text("'MEMBER'"), nullable=False))
 
     tables = inspector.get_table_names()
     if "standup_logs" not in tables:
