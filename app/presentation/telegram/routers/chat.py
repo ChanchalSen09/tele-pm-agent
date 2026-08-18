@@ -15,7 +15,7 @@ from app.application.services.standup_engine import (
     process_standup_user_update,
     trigger_group_standup,
 )
-from app.infrastructure.database.models.models import TaskModel
+from app.infrastructure.database.models.models import TaskModel, UserModel
 from app.infrastructure.database.repositories import AsyncUnitOfWork
 from app.infrastructure.database.session import AsyncSessionFactory
 from app.infrastructure.llm.gemini_client import get_gemini_client
@@ -350,6 +350,80 @@ async def handle_close_task(message: Message) -> None:
     )
 
 
+async def _sync_chat_members_and_mentions(
+    message: Message, user_text: str, uow: AsyncUnitOfWork
+) -> None:
+    """Discovers and auto-provisions chat administrators and explicitly mentioned members into database UserModel."""
+    chat_id = message.chat.id
+    assert uow.users is not None
+
+    # 1. Sync group chat administrators if in group chat
+    if chat_id < 0 and message.bot:
+        try:
+            admins = await message.bot.get_chat_administrators(chat_id=chat_id)
+            for admin in admins:
+                tg_user = getattr(admin, "user", None)
+                if tg_user and not tg_user.is_bot:
+                    existing = await uow.users.get_by_telegram_id(tg_user.id)
+                    if not existing:
+                        await uow.users.save(
+                            UserModel(
+                                telegram_id=tg_user.id,
+                                username=tg_user.username,
+                                first_name=tg_user.first_name or "User",
+                                last_name=tg_user.last_name,
+                            )
+                        )
+                    elif tg_user.username and existing.username != tg_user.username:
+                        existing.username = tg_user.username
+                        await uow.users.save(existing)
+        except Exception as exc:
+            logger.debug("Group chat administrator discovery skipped", error=str(exc))
+
+    # 2. Extract @mentions or explicitly added names in user_text
+    if user_text:
+        mentions = re.findall(r"@([a-zA-Z0-9_]{3,32})", user_text)
+        all_users = await uow.users.list_all_users()
+        existing_handles = {(u.username or "").lower() for u in all_users if u.username}
+        existing_names = {(u.first_name or "").lower() for u in all_users if u.first_name}
+
+        for handle in mentions:
+            if handle.lower() not in existing_handles:
+                fake_id = -abs(hash(handle.lower())) % (10**9)
+                await uow.users.save(
+                    UserModel(
+                        telegram_id=fake_id,
+                        username=handle,
+                        first_name=handle.capitalize(),
+                        role="DEVELOPER",
+                    )
+                )
+                existing_handles.add(handle.lower())
+
+        add_match = re.search(r"(?:add|tag|register)\s+([a-zA-Z0-9_,\s@]+)", user_text, re.IGNORECASE)
+        if add_match:
+            raw_tokens = re.split(r"[\s,]+and[\s,]+|[\s,]+", add_match.group(1))
+            stop_words = {"for", "update", "what", "they", "are", "doing", "task", "the", "with", "status", "progress"}
+            for name in raw_tokens:
+                clean = name.lstrip("@").strip()
+                if (
+                    len(clean) >= 3
+                    and clean.lower() not in stop_words
+                    and clean.lower() not in existing_names
+                    and clean.lower() not in existing_handles
+                ):
+                    fake_id = -abs(hash(clean.lower())) % (10**9)
+                    await uow.users.save(
+                        UserModel(
+                            telegram_id=fake_id,
+                            username=clean.lower(),
+                            first_name=clean.capitalize(),
+                            role="DEVELOPER",
+                        )
+                    )
+                    existing_names.add(clean.lower())
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_chat_message(
     message: Message,
@@ -394,8 +468,11 @@ async def handle_chat_message(
     telegram_id = message.from_user.id
     chat_id = message.chat.id
 
-    # Check for Standup/Progress Update Reply
+    # Auto-sync group chat members and auto-provision mentioned users
     async with AsyncUnitOfWork(AsyncSessionFactory) as uow:
+        await _sync_chat_members_and_mentions(message, user_text, uow)
+
+        # Check for Standup/Progress Update Reply
         standup_reply = await process_standup_user_update(
             user_id=telegram_id,
             username=message.from_user.username,
