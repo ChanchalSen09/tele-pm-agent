@@ -102,8 +102,8 @@ Built following the **Dependency Inversion Principle**:
 
 ```bash
 # Clone repository
-git clone https://github.com/ChanchalSen09/telegram-ai-assistant.git
-cd telegram-ai-assistant
+git clone https://github.com/ChanchalSen09/tele-pm-agent.git
+cd tele-pm-agent
 
 # Create virtual environment
 python -m venv .venv

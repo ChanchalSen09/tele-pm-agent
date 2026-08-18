@@ -7,7 +7,7 @@ where = ["."]
 include = ["app*"]
 
 [project]
-name = "telegram-ai-bot"
+name = "tele-pm-agent"
 version = "0.1.0"
 description = "Production-grade Telegram AI Bot powered by Google Gemini and Clean Architecture"
 readme = "README.md"
