@@ -8,7 +8,7 @@ Create Date: 2026-08-17 18:49:00
 
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -20,6 +20,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if context.is_offline_mode():
+        op.add_column("tasks", sa.Column("due_date", sa.DateTime(timezone=True), nullable=True))
+        op.add_column("tasks", sa.Column("priority", sa.String(length=50), server_default=sa.text("'HIGH'"), nullable=False))
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     task_columns = [col["name"] for col in inspector.get_columns("tasks")]
@@ -32,6 +37,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if context.is_offline_mode():
+        op.drop_column("tasks", "priority")
+        op.drop_column("tasks", "due_date")
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     task_columns = [col["name"] for col in inspector.get_columns("tasks")]
