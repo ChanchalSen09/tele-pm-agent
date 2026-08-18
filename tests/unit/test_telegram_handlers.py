@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Unit tests for Telegram Routers, Handlers, and Middlewares."""
 
 from unittest.mock import AsyncMock, MagicMock

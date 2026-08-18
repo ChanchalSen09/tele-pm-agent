@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Unit tests for Database ORM Models, Repositories, and AsyncUnitOfWork."""
 
 import asyncio

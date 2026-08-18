@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """End-to-End Integration Tests verifying full pipeline flow."""
 
 import asyncio

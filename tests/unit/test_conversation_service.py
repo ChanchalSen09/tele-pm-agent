@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Unit tests for Conversation Application Service."""
 
 import pytest

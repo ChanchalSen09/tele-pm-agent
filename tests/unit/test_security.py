@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Unit tests for Security Utilities and Input Sanitization."""
 
 from app.core.security import sanitize_input_text, validate_telegram_webhook_secret

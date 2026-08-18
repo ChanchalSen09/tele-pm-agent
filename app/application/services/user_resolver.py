@@ -146,7 +146,7 @@ def resolve_and_validate_assignee(
         return (assignee_input.lstrip("@"), True, None)
 
     # 5. Exact and Substring Search for Group Members
-    matches: list["UserModel"] = []
+    matches: list[UserModel] = []
     for user in group_users:
         uname = (user.username or "").lower()
         fname = (user.first_name or "").lower()
@@ -175,7 +175,7 @@ def resolve_and_validate_assignee(
 
     # 6. Fuzzy Matching with Typo Tolerance
     if not matches:
-        fuzzy_scores: list[tuple[float, "UserModel"]] = []
+        fuzzy_scores: list[tuple[float, UserModel]] = []
         for user in group_users:
             uname = (user.username or "").lower()
             fname = (user.first_name or "").lower()

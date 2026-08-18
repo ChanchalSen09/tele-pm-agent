@@ -11,7 +11,6 @@ import structlog
 
 from app.application.services.user_resolver import (
     check_user_ooo_status,
-    format_group_members_summary,
     resolve_and_validate_assignee,
 )
 from app.core.cache import default_task_board_cache
@@ -29,7 +28,7 @@ class NaturalPMResult:
     action_type: str
 
 
-async def parse_and_execute_natural_intent(  # noqa: PLR0911, PLR0912, PLR0915
+async def parse_and_execute_natural_intent(
     user_text: str,
     chat_id: int | None,
     creator_id: int,

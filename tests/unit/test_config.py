@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Unit tests for Application Settings and Exception Hierarchy."""
 
 from app.core.config import AppEnvironment, settings

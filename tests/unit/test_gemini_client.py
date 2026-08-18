@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Unit tests for Gemini API Infrastructure Client Adapter."""
 
 from unittest.mock import MagicMock

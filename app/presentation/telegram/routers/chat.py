@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004
 """Telegram Chat Router handling text queries and Project Manager task management."""
 
 import html
