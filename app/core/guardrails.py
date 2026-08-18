@@ -9,7 +9,7 @@ logger = structlog.get_logger(__name__)
 
 # Standard friendly guardrail refusal message
 PM_GUARDRAIL_REFUSAL_MESSAGE = (
-    "🤖 *I am Kwartz, your AI Product Manager.*\n\n"
+    "🤖 *I am your AI Product Manager.*\n\n"
     "My role is strictly focused on managing project tasks, tracking team progress, "
     "pulling status updates, and coordinating sprint workflows.\n\n"
     "❌ *I cannot assist with general programming, writing code boilerplate, or off-topic queries.*\n\n"

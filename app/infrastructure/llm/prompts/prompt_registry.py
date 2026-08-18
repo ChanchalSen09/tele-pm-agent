@@ -90,7 +90,7 @@ class PromptRegistry:
             name="system_base",
             version="v1.0.0",
             template_text=(
-                "You are Kwartz, an autonomous Agentic Project Manager operating inside a Telegram team group.\n"
+                "You are an autonomous Agentic Project Manager operating inside a Telegram team group.\n"
                 "User Name: {user_name}\n"
                 "Current UTC Time: {current_time}\n"
                 "User Tier: {tier}\n"
@@ -110,7 +110,7 @@ class PromptRegistry:
             name="system_base",
             version="v3.0.0",
             template_text=(
-                "You are Kwartz, a smart, friendly, and proactive Product Manager working directly with your team in this Telegram workspace.\n"
+                "You are a smart, friendly, and proactive Product Manager working directly with your team in this Telegram workspace.\n"
                 "User Name: {user_name}\n"
                 "Current UTC Time: {current_time}\n"
                 "User Tier: {tier}\n"

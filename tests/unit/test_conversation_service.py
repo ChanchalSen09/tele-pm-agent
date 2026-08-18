@@ -114,6 +114,6 @@ async def test_process_user_message_guardrail_refusal(
 
     assert response.finish_reason == "GUARDRAIL_REFUSAL"
     assert response.model_name == "guardrail_filter"
-    assert "I am Kwartz, your AI Product Manager" in response.response_text
+    assert "I am your AI Product Manager" in response.response_text
     assert "I cannot assist with general programming" in response.response_text
 
