@@ -46,11 +46,26 @@ class Settings(BaseSettings):
     # Google Gemini AI Configuration
     GEMINI_API_KEY: SecretStr = Field(
         default=SecretStr("AIzaSyPlaceholderGeminiKey"),
-        description="Google Gemini API Access Key",
+        description="Primary Google Gemini API Access Key",
+    )
+    GEMINI_SECONDARY_API_KEY: SecretStr = Field(
+        default=SecretStr(""),
+        description="Secondary/Fallback Google Gemini API Access Key",
     )
     GEMINI_MODEL_NAME: str = Field(default="gemini-2.5-flash")
     GEMINI_TIMEOUT_SECONDS: float = Field(default=15.0)
     GEMINI_MAX_RETRIES: int = Field(default=3)
+
+    def get_gemini_api_keys(self) -> list[str]:
+        """Returns ordered list of configured non-empty Gemini API keys for failover."""
+        keys: list[str] = []
+        primary = self.GEMINI_API_KEY.get_secret_value().strip()
+        if primary and primary != "AIzaSyPlaceholderGeminiKey":
+            keys.append(primary)
+        secondary = self.GEMINI_SECONDARY_API_KEY.get_secret_value().strip()
+        if secondary and secondary not in keys:
+            keys.append(secondary)
+        return keys or ([primary] if primary else [])
 
     # Database & Cache Configuration
     DATABASE_URL: str = Field(

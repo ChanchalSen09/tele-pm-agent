@@ -156,3 +156,36 @@ def test_get_gemini_client_di_provider() -> None:
     """Verifies get_gemini_client DI provider returns adapter instance."""
     client = get_gemini_client()
     assert isinstance(client, GeminiClientAdapter)
+
+
+@pytest.mark.asyncio
+async def test_gemini_client_multi_key_failover() -> None:
+    """Verifies adapter fails over to secondary API key when primary key encounters rate limit or 503 error."""
+    mock_client1 = MagicMock()
+    mock_client1.models.generate_content.side_effect = Exception("429 RESOURCE_EXHAUSTED Quota exceeded")
+
+    mock_client2 = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "Success from fallback key!"
+    mock_response.usage_metadata.prompt_token_count = 5
+    mock_response.usage_metadata.candidates_token_count = 5
+    mock_response.usage_metadata.total_token_count = 10
+    mock_response.candidates = [MagicMock(finish_reason="STOP")]
+    mock_client2.models.generate_content.return_value = mock_response
+
+    adapter = GeminiClientAdapter(
+        api_keys=["key1", "key2"],
+        model_name="test_model",
+        timeout_seconds=5.0,
+        max_retries=1,
+    )
+    adapter.clients = [mock_client1, mock_client2]
+
+    response = await adapter.generate_completion(
+        system_prompt="System",
+        history=[],
+        user_prompt="User",
+    )
+
+    assert response.generated_text == "Success from fallback key!"
+    assert response.model_name == "test_model"
