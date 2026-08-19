@@ -69,6 +69,14 @@ async def test_user_repository_crud(db_session: AsyncSession) -> None:
     assert fetched.first_name == "Alice"
     assert fetched.username == "alice_test"
 
+    all_users = await repo.list_all_users()
+    assert len(all_users) == 1
+    assert all_users[0].username == "alice_test"
+
+    chat_users = await repo.list_by_chat_id(-1001)
+    assert len(chat_users) == 1
+    assert chat_users[0].username == "alice_test"
+
 
 @pytest.mark.asyncio
 async def test_conversation_repository_active_thread(db_session: AsyncSession) -> None:

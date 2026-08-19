@@ -23,8 +23,12 @@ class UserRepository(SQLAlchemyBaseRepository[UserModel], IUserRepository):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_by_chat_id(self, chat_id: int | None) -> list[UserModel]:
-        """Fetches registered users participating in a specific chat_id, with fallback to all active users."""
+    async def list_all_users(self) -> list[UserModel]:
+        """Fetches all active registered users."""
         stmt = select(UserModel).where(UserModel.deleted_at.is_(None))
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_by_chat_id(self, chat_id: int | None) -> list[UserModel]:
+        """Fetches registered users participating in a specific chat_id, with fallback to all active users."""
+        return await self.list_all_users()

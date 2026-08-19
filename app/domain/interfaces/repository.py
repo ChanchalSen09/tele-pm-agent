@@ -39,6 +39,11 @@ class IUserRepository(IBaseRepository[Any]):
         """Fetch users participating in a specific chat."""
         pass
 
+    @abstractmethod
+    async def list_all_users(self) -> list[Any]:
+        """Fetch all active users."""
+        pass
+
 
 class IConversationRepository(IBaseRepository[Any]):
     """Conversation Thread Repository Interface."""
