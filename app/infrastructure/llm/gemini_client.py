@@ -95,17 +95,25 @@ class GeminiClientAdapter(ILLMProvider):
         )
 
         candidate_models = [self.model_name]
-        for fallback in ["gemini-2.5-flash", "gemini-2.0-flash"]:
+        for fallback in ["gemini-3.6-flash", "gemini-flash-latest"]:
             if fallback not in candidate_models:
                 candidate_models.append(fallback)
 
         attempt = 0
         last_exception: Exception | None = None
 
-        for client_idx, active_client in enumerate(self.clients):
-            for model_to_use in candidate_models:
+        for model_to_use in candidate_models:
+            model_is_dead = False
+            for client_idx, active_client in enumerate(self.clients):
+                if model_is_dead:
+                    break
+
+                key_failed = False
                 model_attempts = 0
                 while model_attempts < self.max_retries:
+                    if key_failed or model_is_dead:
+                        break
+
                     try:
                         attempt += 1
                         model_attempts += 1
@@ -210,11 +218,12 @@ class GeminiClientAdapter(ILLMProvider):
                             last_exception = LLMException(f"Gemini API failure: {err_str}")
 
                         if is_not_found:
-                            # Deprecated/invalid model endpoint - stop retrying this model and switch to next fallback
+                            # Deprecated/invalid model endpoint - skip model across all keys
                             logger.warning(
-                                "Model not found or deprecated, skipping remaining retries for this model",
+                                "Model not found or deprecated, skipping model for all API keys",
                                 model=model_to_use,
                             )
+                            model_is_dead = True
                             break
 
                         if (is_rate_limit or "503" in err_str) and len(self.clients) > 1 and client_idx < len(self.clients) - 1:
@@ -222,6 +231,7 @@ class GeminiClientAdapter(ILLMProvider):
                                 "Rate limit or service overload on API key, failing over to next API key",
                                 key_index=client_idx,
                             )
+                            key_failed = True
                             break
 
                         if model_attempts < self.max_retries:

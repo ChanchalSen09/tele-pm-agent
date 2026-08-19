@@ -52,7 +52,7 @@ class Settings(BaseSettings):
         default=SecretStr(""),
         description="Secondary/Fallback Google Gemini API Access Key",
     )
-    GEMINI_MODEL_NAME: str = Field(default="gemini-2.5-flash")
+    GEMINI_MODEL_NAME: str = Field(default="gemini-3.6-flash")
     GEMINI_TIMEOUT_SECONDS: float = Field(default=15.0)
     GEMINI_MAX_RETRIES: int = Field(default=3)
 
